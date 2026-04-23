@@ -1,213 +1,393 @@
-#include <iostream>
+// Popup bypass - By agre
+// Reconstructed from decompiled binary (fixed)
+
 #include <windows.h>
-#include <string>
-#include <TlHelp32.h>
+#include <tlhelp32.h>
+#include <iostream>
+#include <cstdio>
+#include <cstdlib>
+#include <process.h>
 
-#pragma comment(lib, "Advapi32.lib")
-#pragma comment(lib, "User32.lib")
-
-
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "kernel32.lib")
+#pragma comment(lib, "ntdll.lib")
 void Log(const std::string& message);
-
-constexpr uint32_t JobObjectFreezeInformation = 18;
-
-typedef struct _JOBOBJECT_WAKE_FILTER {
-	ULONG HighEdgeFilter;
-	ULONG LowEdgeFilter;
-} JOBOBJECT_WAKE_FILTER, * PJOBOBJECT_WAKE_FILTER;
-
-typedef struct _JOBOBJECT_FREEZE_INFORMATION {
-	union {
-		ULONG Flags;
-		struct {
-			ULONG FreezeOperation : 1;
-			ULONG FilterOperation : 1;
-			ULONG SwapOperation : 1;
-			ULONG Reserved : 29;
-		};
-	};
-	BOOLEAN Freeze;
-	BOOLEAN Swap;
-	UCHAR Reserved0[2];
-	JOBOBJECT_WAKE_FILTER WakeFilter;
-} JOBOBJECT_FREEZE_INFORMATION, * PJOBOBJECT_FREEZE_INFORMATION;
-
-HANDLE globalJobHandle = NULL;
-
-bool FreezeProcess(HANDLE hProcess) {
-	globalJobHandle = CreateJobObject(NULL, NULL);
-	if (!globalJobHandle) {
-		std::cerr << "Failed to create Job Object. Error: " << GetLastError() << std::endl;
-		return false;
-	}
-
-	if (!AssignProcessToJobObject(globalJobHandle, hProcess)) {
-		std::cerr << "Failed to assign process to Job Object. Error: " << GetLastError() << std::endl;
-		CloseHandle(globalJobHandle);
-		globalJobHandle = NULL;
-		return false;
-	}
-
-	JOBOBJECT_FREEZE_INFORMATION freezeInfo = { 0 };
-	freezeInfo.FreezeOperation = 1;
-	freezeInfo.Freeze = TRUE;
-
-	if (!SetInformationJobObject(globalJobHandle, (JOBOBJECTINFOCLASS)JobObjectFreezeInformation, &freezeInfo, sizeof(freezeInfo))) {
-		std::cerr << "Failed to freeze Job Object. Error: " << GetLastError() << std::endl;
-		CloseHandle(globalJobHandle);
-		globalJobHandle = NULL;
-		return false;
-	}
-
-	return true;
+// ------------------------------------------------------------------
+// Custom vsnprintf_s wrapper
+// ------------------------------------------------------------------
+int __cdecl vsnprintf_s_wrapper(char* buffer, size_t bufferCount, size_t maxCount, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(buffer, bufferCount, format, args);
+    va_end(args);
+    if (result < 0) return -1;
+    return result;
 }
 
-bool ThawProcess(HANDLE hProcess) {
-	if (!globalJobHandle) {
-		std::cerr << "No valid job handle available for [removed]. Did you freeze the process first?" << std::endl;
-		return false;
-	}
+// ------------------------------------------------------------------
+// Console title and output helpers
+// ------------------------------------------------------------------
+const wchar_t ConsoleTitle[] = L"  Popup bypass - By agre ";
 
-	JOBOBJECT_FREEZE_INFORMATION freezeInfo = { 0 };
-	freezeInfo.FreezeOperation = 1;
-	freezeInfo.Freeze = FALSE;
+// ------------------------------------------------------------------
+// Function to run a command via cmd.exe and wait for it to finish
+// ------------------------------------------------------------------
+BOOL RunCommandWait(const char* command) {
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
 
-	if (!SetInformationJobObject(globalJobHandle, (JOBOBJECTINFOCLASS)JobObjectFreezeInformation, &freezeInfo, sizeof(freezeInfo))) {
-		std::cerr << "Failed to [removed] Object. Error: " << GetLastError() << std::endl;
-		return false;
-	}
+    char cmdLine[1024];
+    vsnprintf_s_wrapper(cmdLine, sizeof(cmdLine), sizeof(cmdLine), "cmd.exe /c %s", command);
 
-	std::cout << "Process [removed] successfully!" << std::endl;
-	return true;
+    if (CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return TRUE;
+    }
+    return FALSE;
 }
 
-DWORD GetServicePID(const wchar_t* serviceName) {
-	DWORD pid = 0;
+// ------------------------------------------------------------------
+// Function to run a command via cmd.exe without waiting
+// ------------------------------------------------------------------
+BOOL RunCommandNoWait(const char* command) {
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi = { 0 };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
 
-	SC_HANDLE hSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE);
-	if (!hSCManager) {
-		std::wcerr << L"Error opening Service Control Manager: " << GetLastError() << std::endl;
-		return 0;
-	}
+    char cmdLine[1024];
+    vsnprintf_s_wrapper(cmdLine, sizeof(cmdLine), sizeof(cmdLine), "%s", command);
 
-	SC_HANDLE hService = OpenService(hSCManager, serviceName, SERVICE_QUERY_STATUS);
-	if (!hService) {
-		std::wcerr << L"Error opening service: " << GetLastError() << std::endl;
-		CloseServiceHandle(hSCManager);
-		return 0;
-	}
-
-	SERVICE_STATUS_PROCESS ssp;
-	DWORD bytesNeeded;
-	if (QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(ssp), &bytesNeeded)) {
-		pid = ssp.dwProcessId;
-	}
-	else {
-		std::wcerr << L"Error obtaining service status: " << GetLastError() << std::endl;
-	}
-
-	CloseServiceHandle(hService);
-	CloseServiceHandle(hSCManager);
-
-	return pid;
+    if (CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return TRUE;
+    }
+    return FALSE;
 }
 
-HANDLE GetProcessHandle(DWORD processId) {
-	HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
-	if (!hProcess) {
-		std::cerr << "Error opening process (PID: " << processId << "): " << GetLastError() << std::endl;
-	}
-	return hProcess;
+// ------------------------------------------------------------------
+// Dynamic function pointers for NtSuspendProcess / NtResumeProcess
+// ------------------------------------------------------------------
+typedef NTSTATUS(NTAPI* NtSuspendProcess_t)(HANDLE ProcessHandle);
+typedef NTSTATUS(NTAPI* NtResumeProcess_t)(HANDLE ProcessHandle);
+
+NtSuspendProcess_t NtSuspendProcess = nullptr;
+NtResumeProcess_t NtResumeProcess = nullptr;
+
+DWORD dwProcessId = 0;          // PID of the Dnscache service
+HWND  g_hwnd = NULL;            // handle of the console window
+bool  g_running = true;         // main loop flag
+
+// ------------------------------------------------------------------
+// Suspend/resume the DnsCache process (bypassed popup)
+// ------------------------------------------------------------------
+void SuspendDnsCache() {
+    if (dwProcessId && NtSuspendProcess) {
+        HANDLE hProc = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+        if (hProc) {
+            NtSuspendProcess(hProc);
+            CloseHandle(hProc);
+        }
+    }
 }
 
-void adjust_privileges() {
-	HANDLE hToken;
-	TOKEN_PRIVILEGES tp;
-
-	try {
-		if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-			throw std::runtime_error("Failed to open process token.");
-		}
-
-		LUID luid;
-		if (!LookupPrivilegeValueW(nullptr, L"SeDebugPrivilege", &luid)) {
-			throw std::runtime_error("Failed to look up privilege value.");
-		}
-
-		tp.PrivilegeCount = 1;
-		tp.Privileges[0].Luid = luid;
-		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-		if (!AdjustTokenPrivileges(hToken, FALSE, &tp, 0, nullptr, nullptr)) {
-			throw std::runtime_error("Failed to adjust token privileges.");
-		}
-
-	}
-	catch (const std::exception& e) {
-		std::wstring error_message = L"Failed to adjust privileges: " + std::wstring(e.what(), e.what() + strlen(e.what()));
-	}
+void ResumeDnsCache() {
+    if (dwProcessId && NtResumeProcess) {
+        HANDLE hProc = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+        if (hProc) {
+            NtResumeProcess(hProc);
+            CloseHandle(hProc);
+        }
+    }
 }
 
+// ------------------------------------------------------------------
+// EnumWindows callback to look for the VALORANT window
+// ------------------------------------------------------------------
+BOOL CALLBACK EnumFunc(HWND hWnd, LPARAM lParam) {
+    char windowTitle[256] = { 0 };
+    GetWindowTextA(hWnd, windowTitle, sizeof(windowTitle));
+    if (strstr(windowTitle, "VALORANT  ")) {
+        *(bool*)lParam = true;
+        return FALSE;   // stop enumeration
+    }
+    return TRUE;
+}
+
+// ------------------------------------------------------------------
+// Delete firewall rules that block vgc.exe / vgm.exe
+// ------------------------------------------------------------------
+BOOL DeleteFirewallRules() {
+    RunCommandWait("netsh advfirewall firewall delete rule name=\"Block vgc.exe\"");
+    return RunCommandWait("netsh advfirewall firewall delete rule name=\"Block vgm.exe\"");
+}
+
+// ------------------------------------------------------------------
+// Safe exit: hide console, kill Riot processes, resume DNS, etc.
+// ------------------------------------------------------------------
+void SafeExit() {
+    std::cout << "\x1B[1;31m  [+] Safe Exit ...\x1B[1;97m" << std::endl;
+    ShowWindow(g_hwnd, SW_HIDE);
+
+    const char* procList[] = { "Riot", "vgc", "VALORANT", "CrashReport" };
+    for (auto& name : procList) {
+        char buffer[128];
+        vsnprintf_s_wrapper(buffer, sizeof(buffer), sizeof(buffer), "taskkill /F /IM %s*", name);
+        RunCommandWait(buffer);
+    }
+
+    ResumeDnsCache();
+    RunCommandWait("w32tm /resync");
+    RunCommandWait("sc start vgc");
+    DeleteFirewallRules();
+    ExitProcess(0);
+}
+
+// ------------------------------------------------------------------
+// Console control handler (Ctrl+C, etc.)
+// ------------------------------------------------------------------
+BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
+    if (dwCtrlType == CTRL_CLOSE_EVENT || dwCtrlType == CTRL_C_EVENT) {
+        SafeExit();
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// ------------------------------------------------------------------
+// Hotkey monitoring thread (F10 -> exit)
+// ------------------------------------------------------------------
+unsigned __stdcall HotkeyThread(void*) {
+    while (g_running) {
+        if (GetAsyncKeyState(VK_F10) & 0x8000) {
+            SafeExit();
+            Sleep(500);
+        }
+        Sleep(50);
+    }
+    return 0;
+}
+
+// ------------------------------------------------------------------
+// Main entry point
+// ------------------------------------------------------------------
 int pb260605() {
-	adjust_privileges();
-	system("sc start vgc");
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hConsole, &mode);
+    SetConsoleMode(hConsole, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    SetConsoleTitleW(ConsoleTitle);
+
+    // Set console buffer and window size (fixed narrowing conversion)
+    COORD bufferSize;
+    bufferSize.X = static_cast<SHORT>(19660857 & 0xFFFF);   // low‑16 bits
+    bufferSize.Y = static_cast<SHORT>((19660857 >> 16) & 0xFFFF); // high‑16 bits
+    SetConsoleScreenBufferSize(hConsole, bufferSize);
+
+    SMALL_RECT windowRect = { 0, 0, 1245240, 1 };
+    SetConsoleWindowInfo(hConsole, TRUE, &windowRect);
+
+    g_hwnd = GetConsoleWindow();
+
+    // If vgc.exe exists, grab its icon and set it for the console
+    if (GetFileAttributesW(L"C:\\Program Files\\Riot Vanguard\\vgc.exe") != INVALID_FILE_ATTRIBUTES) {
+        HICON hIcon = ExtractIconW(GetModuleHandleW(NULL), L"C:\\Program Files\\Riot Vanguard\\vgc.exe", 0);
+        if (hIcon >= (HICON)2) {
+            SendMessageW(g_hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+            SendMessageW(g_hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+        }
+    }
+
+    // Make console layered (semi-transparent)
+    SetWindowPos(g_hwnd, HWND_MESSAGE, 0, 0, 0, 0, SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE);
+    LONG exStyle = GetWindowLongW(g_hwnd, GWL_EXSTYLE);
+    SetWindowLongW(g_hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(g_hwnd, 0, 230, LWA_ALPHA);
+
+    // Enable SeDebugPrivilege
+    HANDLE hToken;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+        TOKEN_PRIVILEGES tp = { 0 };
+        tp.PrivilegeCount = 1;
+        tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        if (LookupPrivilegeValueA(NULL, "SeDebugPrivilege", &tp.Privileges[0].Luid)) {
+            AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), NULL, NULL);
+            if (GetLastError() != ERROR_SUCCESS) {
+                CloseHandle(hToken);
+                std::cout << "\x1B[1;31m  [!] Need run as Administrator.\x1B[1;97m" << std::endl;
+            }
+            else {
+                CloseHandle(hToken);
+            }
+        }
+        else {
+            CloseHandle(hToken);
+            std::cout << "\x1B[1;31m  [!] Need run as Administrator.\x1B[1;97m" << std::endl;
+        }
+    }
+    else {
+        std::cout << "\x1B[1;31m  [!] Need run as Administrator.\x1B[1;97m" << std::endl;
+    }
+
+    // Dynamically resolve NtSuspendProcess / NtResumeProcess from ntdll
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll) {
+        NtSuspendProcess = (NtSuspendProcess_t)GetProcAddress(hNtdll, "NtSuspendProcess");
+        NtResumeProcess = (NtResumeProcess_t)GetProcAddress(hNtdll, "NtResumeProcess");
+    }
+
+    // Set console control handler
+    SetConsoleCtrlHandler(HandlerRoutine, TRUE);
+
+    // Start hotkey thread
+    uintptr_t hThread = _beginthreadex(NULL, 0, HotkeyThread, NULL, 0, NULL);
+    if (hThread == 0) {
+        std::cerr << "Failed to create hotkey thread!" << std::endl;
+        return 1;
+    }
+    // Detach the thread by closing its handle (replaces undefined Thrd_detach)
+    CloseHandle(reinterpret_cast<HANDLE>(hThread));
+
+    // Obtain DnsCache service PID
+    SC_HANDLE hSCM = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (hSCM) {
+        SC_HANDLE hService = OpenServiceW(hSCM, L"Dnscache", SERVICE_QUERY_STATUS);
+        if (hService) {
+            SERVICE_STATUS_PROCESS ssp = { 0 };
+            DWORD bytesNeeded = 0;
+            if (QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(ssp), &bytesNeeded)) {
+                dwProcessId = ssp.dwProcessId;
+            }
+            CloseServiceHandle(hService);
+        }
+        else {
+            dwProcessId = 0;
+        }
+        CloseServiceHandle(hSCM);
+    }
+    else {
+        dwProcessId = 0;
+    }
+
+    if (dwProcessId == 0) {
+        std::cout << "\x1B[1;31m  [!] DNS Cache service not found.\x1B[1;97m" << std::endl;
+    }
+
+    // Ensure the DnsCache process is running (resume if needed)
+    if (NtResumeProcess && dwProcessId) {
+        HANDLE hProc = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+        if (hProc) {
+            NtResumeProcess(hProc);
+            CloseHandle(hProc);
+        }
+    }
 
 
-	system("cls");
 
-	std::wcout << "\n [+] Waiting for VALORANT-Win64-Shipping.exe..." << std::endl;
-	Log("Waiting for Valorant...");
-	Sleep(50);
+    std::cout << "\x1B[1;32m  [+] Starting Valorant ...\x1B[1;97m" << std::endl;
+    Log("Starting Valorant...");
 
-	uint32_t vgc_pid = 0;
+    RunCommandWait("w32tm /resync");
+    RunCommandWait("Del /F /S /Q \"C:\\Program Files\\Riot Vanguard\\Logs\\*\"");
+    RunCommandNoWait("cmd.exe /c sc start vgc");
+    RunCommandNoWait("\"C:\\Riot Games\\Riot Client\\RiotClientServices.exe\" --launch-product=valorant --launch-patchline=live");
 
-	while (vgc_pid == 0) {
-		PROCESSENTRY32W entry;
-		entry.dwSize = sizeof(PROCESSENTRY32W);
-		HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-		if (Process32FirstW(snapshot, &entry)) {
-			do {
-				if (wcscmp(entry.szExeFile, L"VALORANT-Win64-Shipping.exe") == 0) {
-					vgc_pid = entry.th32ProcessID;
-					break;
-				}
-			} while (Process32NextW(snapshot, &entry));
-		}
-		CloseHandle(snapshot);
-		Sleep(2000);
-	}
+    // Main monitoring loop
+    bool valorantFound = false;
+    bool initBypassed = false;
+    bool threadSuspended = false;
 
-	std::wcout << "\n [+] VALORANT-Win64-Shipping.exe found.\n\n  [+] Loading Bypass..." << std::endl;
-	Log("Valorant found!");
-	std::wcout << "\n [>] ETA: 45 Seconds.." << std::endl;
+    while (g_running) {
+        // Enumerate processes to find vgc.exe
+        HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        DWORD vgcPid = 0;
+        if (hSnapshot != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W pe = { sizeof(pe) };
+            if (Process32FirstW(hSnapshot, &pe)) {
+                do {
+                    if (_wcsicmp(pe.szExeFile, L"vgc.exe") == 0) {
+                        vgcPid = pe.th32ProcessID;
+                        break;
+                    }
+                } while (Process32NextW(hSnapshot, &pe));
+            }
+            CloseHandle(hSnapshot);
+        }
 
-	Sleep(45000);
+        // Check if VALORANT window exists
+        bool windowFound = false;
+        EnumWindows(EnumFunc, (LPARAM)&windowFound);
 
-	const wchar_t* serviceName = L"Dnscache";
-	DWORD pid = GetServicePID(serviceName);
+        if (windowFound != valorantFound) {
+            valorantFound = windowFound;
+            if (!windowFound) {
+                system("cls");
 
-	if (pid) {
-		FreezeProcess(GetProcessHandle(pid));
+                std::cout << "\x1B[1;33m  [*] Waiting Valorant ...\x1B[1;97m" << std::flush;
+                // Re-enable DNS cache while waiting
+                if (dwProcessId && NtResumeProcess) {
+                    HANDLE hProc = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+                    if (hProc) {
+                        NtResumeProcess(hProc);
+                        CloseHandle(hProc);
+                    }
+                }
+                RunCommandWait("w32tm /resync");
+                RunCommandWait("sc start vgc");
+                threadSuspended = false;
+                initBypassed = true;
+            }
+            else {
+                std::cout << "\x1B[1;32m  [+] Valorant found.                     \x1B[1;97m" << std::endl;
+                Log("´Valorant found");
+            }
+        }
 
-		std::wcout << "\n  [>] Done!" << std::endl;
-		std::wcout << "\n\n  [OK] Popup has been bypassed!" << std::endl;
-		std::wcout << "\n  [!] DO NOT CLOSE THIS WINDOW!" << std::endl;
-		std::wcout << "\n\n  [+] Press F2 to kill bypass safely." << std::endl;
 
-		Log("Popup bypass active");
+        if (windowFound && vgcPid && (!initBypassed || !threadSuspended)) {
+            std::cout << "\r\x1B[1;33m  [*] Waiting VGC Init to Bypass PopUp...\x1B[1;97m                    " << std::flush;
+            Log("Waiting for VGC...");
+            while (g_running) {
+                HANDLE hThSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                int cThreads = 0;
+                if (hThSnapshot != INVALID_HANDLE_VALUE) {
+                    THREADENTRY32 te = { sizeof(te) };
+                    if (Thread32First(hThSnapshot, &te)) {
+                        do {
+                            if (te.th32OwnerProcessID == vgcPid)
+                                cThreads++;
+                        } while (Thread32Next(hThSnapshot, &te));
+                    }
+                    CloseHandle(hThSnapshot);
+                }
+                if (cThreads > 14)   // VGC has spawned enough threads
+                    break;
+                Sleep(10);
+            }
+            Sleep(200);
 
-		Log("Press F2 to remove");
+            // Suspend DNS cache to bypass VAN -102 popup
+            if (dwProcessId && NtSuspendProcess) {
+                HANDLE hProc = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+                if (hProc) {
+                    NtSuspendProcess(hProc);
+                    CloseHandle(hProc);
+                }
+            }
+            threadSuspended = true;
+            initBypassed = true;
+            std::cout << "\r\x1B[1;32m  [+] Popup Bypassed ! \x1B[1;33m ( VAN -102 )\x1B[1;97m                    " << std::endl;
+            Log("Bypass sucess!");
+        }
 
-		while (true) {
-			if (GetAsyncKeyState(VK_F2) & 0x8000) {
-				std::wcout << "\n  [-] Removing bypass. Exiting..." << std::endl;
-				ThawProcess(GetProcessHandle(pid));
-				std::wcout << "\n  [+] Bypass removed. Exiting..." << std::endl;
-				exit(0);
-			}
-			Sleep(20);
-		}
-	}
+        Sleep(500);
+    }
 
-	return 0;
+    return 0;
 }
